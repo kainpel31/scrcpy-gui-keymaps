@@ -395,7 +395,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
     };
   });
 
-  // Tangkap tekanan keyboard saat key picker terbuka di inspector
   useEffect(() => {
     if (!keyPickerOpen || !selectedControl) return;
 
@@ -475,7 +474,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
     e.stopPropagation();
 
     if (e.shiftKey) {
-      // Shift + scroll = fade / opacity
       const deltaFade = e.deltaY < 0 ? 0.05 : -0.05;
       const nextFade = Math.max(0.15, Math.min(1, (ctrl.fade ?? 0.85) + deltaFade));
       commitActiveLayout(
@@ -488,7 +486,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
         false
       );
     } else {
-      // Scroll = resize scale
       const deltaScale = e.deltaY < 0 ? 0.08 : -0.08;
       const nextScale = Math.max(0.6, Math.min(1.8, (ctrl.scale ?? 1) + deltaScale));
       commitActiveLayout(
@@ -628,13 +625,13 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
   const joystickCtrl = activeLayout.controls.find((c) => c.kind === "joystick");
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/55 text-zinc-100 select-none">
-      {/* Top Device Bar (102752537K009428 USB | Paused: keys go to Windows | Record) */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-950/95 border-b border-zinc-800 text-xs">
+    <div className="fixed inset-0 z-50 flex flex-col bg-transparent text-zinc-100 select-none">
+      {/* Top Device Bar */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-950/90 border-b border-zinc-800 text-xs">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 font-mono text-[11px]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            {activeDevice || "102752537K009428 USB"}
+            {activeDevice || "scrcpy-device"}
           </span>
 
           <button
@@ -642,7 +639,7 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
             onClick={() => setIsEditing((v) => !v)}
             className="px-2.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px]"
           >
-            {isEditing ? "Editing overlay" : "Paused: keys go to Windows"}
+            {isEditing ? "Editing overlay" : "Play mode: keys mapped"}
           </button>
 
           <button
@@ -663,8 +660,8 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
         </div>
       </div>
 
-      {/* Editor Sub-Bar (Layout 1 - mirror v | Add v | hint | SAVING... | Undo | More v | Done) */}
-      <div className="relative flex items-center justify-between px-3 py-1.5 bg-zinc-900/95 border-b border-zinc-800 text-xs">
+      {/* Editor Sub-Bar */}
+      <div className="relative flex items-center justify-between px-3 py-1.5 bg-zinc-900/90 border-b border-zinc-800 text-xs">
         <div className="flex items-center gap-2 min-w-0">
           <div className="relative">
             <button
@@ -888,7 +885,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
           mouseFree || isEditing ? "pointer-events-auto" : "pointer-events-none"
         }`}
       >
-        {/* Joystick Outer / Inner Rings & Sprint Reach Arc */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           {joystickCtrl && (
             <>
@@ -920,7 +916,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
           )}
         </svg>
 
-        {/* Draggable Circle Badges Over Screen Mirror */}
         {activeLayout.controls.map((ctrl) => {
           const sig = getBindingSignature(ctrl.binding);
           const isSelected = ctrl.id === selectedControlId;
@@ -953,14 +948,12 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
           );
         })}
 
-        {/* Floating Key Inspector Card (Mirip image_0f2324.jpg) */}
         {isEditing && inspectorOpen && selectedControl && (
           <div
             style={{ left: `${inspectorPos.x}px`, top: `${inspectorPos.y}px` }}
             onClick={(e) => e.stopPropagation()}
             className="absolute z-30 w-80 rounded-xl bg-zinc-900/95 border border-zinc-700 shadow-2xl text-xs text-zinc-100 overflow-hidden"
           >
-            {/* Card Header */}
             <div
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -1003,7 +996,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
               </button>
             </div>
 
-            {/* Behavior Tabs (Tap / Hold / Repeat / Toggle) */}
             <div className="grid grid-cols-4 border-b border-zinc-800 text-[11px]">
               {BEHAVIORS.map((b) => {
                 const active = (selectedControl.behavior ?? "Tap") === b;
@@ -1025,7 +1017,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
             </div>
 
             <div className="p-3.5 space-y-3 max-h-[420px] overflow-y-auto">
-              {/* Opens a menu */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="font-semibold">Opens a menu</div>
@@ -1043,7 +1034,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
                 />
               </div>
 
-              {/* When held */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="font-semibold">When held</div>
@@ -1069,7 +1059,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
                 {showMoreDetails ? "LESS" : "MORE"}
               </button>
 
-              {/* Pressed by */}
               <div className="space-y-1.5">
                 <div className="text-[11px] text-zinc-400">Pressed by</div>
                 <div className="grid grid-cols-2 rounded-lg bg-zinc-950 p-1 border border-zinc-800">
@@ -1093,7 +1082,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
                 </div>
               </div>
 
-              {/* Hold with (CTRL / SHIFT / ALT) */}
               <div className="space-y-1.5">
                 <div className="text-[11px] text-zinc-400">Hold with</div>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -1117,7 +1105,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
                 </div>
               </div>
 
-              {/* Mouse drags it while held */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="font-semibold">Mouse drags it while held</div>
@@ -1138,7 +1125,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
                 />
               </div>
 
-              {/* Fade Slider */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-zinc-400">Fade</span>
@@ -1204,7 +1190,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
           </div>
         )}
 
-        {/* Key Picker Popover Grid (Mirip image_0f228c.jpg di kanan bawah) */}
         {isEditing && keyPickerOpen && selectedControl && (
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1261,7 +1246,6 @@ export const ScreenOverlayKeymapper: React.FC<ScreenOverlayKeymapperProps> = ({
           </div>
         )}
 
-        {/* Quick Re-lock Button when Free Mouse is Active */}
         {mouseFree && (
           <button
             type="button"
