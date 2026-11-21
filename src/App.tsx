@@ -14,6 +14,7 @@ import OnboardingModal from "./components/OnboardingModal";
 import ThemedModal from "./components/ThemedModal";
 import { VisualKeymapOverlay } from "./components/VisualKeymapOverlay";
 import {
+  DeviceResolution,
   GameLayout,
   TouchDispatchPayload,
   createDefaultLayouts,
@@ -88,17 +89,13 @@ function App() {
   const [lastCheckedPath, setLastCheckedPath] = useState<string | undefined>(undefined);
   const [hasCheckedUpdate, setHasCheckedUpdate] = useState(false);
 
-  // State Visual Keymapping
   const [keymapLayouts, setKeymapLayouts] = useState<GameLayout[]>(() =>
     createDefaultLayouts()
   );
   const [activeKeymapLayoutId, setActiveKeymapLayoutId] = useState<string>("layout_1");
   const [isEditingKeymap, setIsEditingKeymap] = useState<boolean>(false);
   const [showKeymapPanel, setShowKeymapPanel] = useState<boolean>(true);
-  const [deviceResolution, setDeviceResolution] = useState<{
-    width: number;
-    height: number;
-  }>({
+  const [deviceResolution, setDeviceResolution] = useState<DeviceResolution>({
     width: 1920,
     height: 1080,
   });
@@ -115,6 +112,21 @@ function App() {
   const handleImportKeymapLayout = (imported: GameLayout) => {
     setKeymapLayouts((prev) => [...prev, imported]);
     setActiveKeymapLayoutId(imported.id);
+  };
+
+  const handleDetectResolution = async (serial: string | null) => {
+    if (!serial) return;
+    try {
+      const res = await invoke<DeviceResolution>("get_device_resolution", {
+        serial,
+        customPath: config.scrcpyPath ?? null,
+      });
+      if (res && res.width > 0 && res.height > 0) {
+        setDeviceResolution({ width: res.width, height: res.height });
+      }
+    } catch (e) {
+      console.error("Failed to detect device resolution:", e);
+    }
   };
 
   const handleDispatchTouch = async (payload: TouchDispatchPayload) => {
@@ -263,6 +275,7 @@ function App() {
   useEffect(() => {
     if (activeDevice) {
       setConfig((prev) => ({ ...prev, device: activeDevice }));
+      void handleDetectResolution(activeDevice);
     }
   }, [activeDevice]);
 
@@ -457,7 +470,7 @@ function App() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <label className="flex items-center gap-1 opacity-80">
                         <span>W:</span>
                         <input
@@ -486,6 +499,14 @@ function App() {
                           className="w-16 px-1.5 py-0.5 rounded bg-black/40 border border-white/15"
                         />
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleDetectResolution(activeDevice)}
+                        disabled={!activeDevice}
+                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 font-medium"
+                      >
+                        Auto Res
+                      </button>
                       <button
                         type="button"
                         onClick={() => setShowKeymapPanel((v) => !v)}
