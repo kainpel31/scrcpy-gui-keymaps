@@ -3,6 +3,7 @@ mod commands;
 // (Ctrl+Alt+Shift+W).
 #[cfg(target_os = "windows")]
 mod grab;
+mod keymap_injector;
 // Cross-platform global OS shortcuts (e.g. Ctrl+Alt+Shift+C to recentre the
 // active mirror window), shared with grab.rs's Windows-only drag toggle.
 mod shortcuts;
@@ -127,6 +128,7 @@ pub fn run() {
             commands::get_scrcpy_bin_dir,
             commands::run_terminal_command,
             commands::check_scrcpy_update,
+            keymap_injector::inject_android_touch,
             close_splashscreen,
             get_app_version
         ])
