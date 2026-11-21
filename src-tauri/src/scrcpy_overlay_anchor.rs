@@ -14,11 +14,44 @@ mod win_anchor {
     use super::ScrcpyWindowRect;
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible,
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW,
-    };
+
+    type BOOL = i32;
+    type HWND = isize;
+    type LPARAM = isize;
+    type UINT = u32;
+
+    #[repr(C)]
+    #[derive(Copy, Clone, Default)]
+    struct RECT {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    type WNDENUMPROC = Option<unsafe extern "system" fn(HWND, LPARAM) -> BOOL>;
+
+    const HWND_TOPMOST: HWND = -1;
+    const SWP_NOACTIVATE: UINT = 0x0010;
+    const SWP_SHOWWINDOW: UINT = 0x0040;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn IsWindowVisible(hWnd: HWND) -> BOOL;
+        fn GetWindowTextLengthW(hWnd: HWND) -> i32;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn GetWindowRect(hWnd: HWND, lpRect: *mut RECT) -> BOOL;
+        fn SetWindowPos(
+            hWnd: HWND,
+            hWndInsertAfter: HWND,
+            X: i32,
+            Y: i32,
+            cx: i32,
+            cy: i32,
+            uFlags: UINT,
+        ) -> BOOL;
+    }
 
     struct SearchTarget {
         needle: String,
@@ -128,7 +161,7 @@ pub fn sync_overlay_to_scrcpy(
         if rect.found {
             if let Ok(hwnd) = window.hwnd() {
                 win_anchor::position_overlay_hwnd(
-                    hwnd.0 as windows_sys::Win32::Foundation::HWND,
+                    hwnd.0 as isize,
                     rect.x,
                     rect.y,
                     rect.width,
