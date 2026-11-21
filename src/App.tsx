@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import Sidebar from "./components/Sidebar";
 import ControlPanel from "./components/ControlPanel";
 import LogPanel from "./components/LogPanel";
@@ -11,8 +12,14 @@ import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OnboardingModal from "./components/OnboardingModal";
 import ThemedModal from "./components/ThemedModal";
+import { VisualKeymapOverlay } from "./components/VisualKeymapOverlay";
+import {
+  GameLayout,
+  TouchDispatchPayload,
+  createDefaultLayouts,
+} from "./types/keymap";
 import { useScrcpy } from "./hooks/useScrcpy";
-import { getVersion } from '@tauri-apps/api/app';
+import { getVersion } from "@tauri-apps/api/app";
 import { useI18n } from "./i18n";
 
 function App() {
@@ -57,14 +64,14 @@ function App() {
     clearHistory,
     isOnboardingOpen,
     setIsOnboardingOpen,
-    completeOnboarding
+    completeOnboarding,
   } = useScrcpy();
 
   const [alertState, setAlertState] = useState<{
     isOpen: boolean;
     title: string;
     message: string;
-    kind: 'warning' | 'error' | 'info' | 'success';
+    kind: "warning" | "error" | "info" | "success";
     actionLabel?: string;
     onAction?: () => void;
     showCancel?: boolean;
@@ -72,23 +79,69 @@ function App() {
     onCancel?: () => void;
   }>({
     isOpen: false,
-    title: '',
-    message: '',
-    kind: 'info'
+    title: "",
+    message: "",
+    kind: "info",
   });
 
   const [appVersion, setAppVersion] = useState("3.3.0");
   const [lastCheckedPath, setLastCheckedPath] = useState<string | undefined>(undefined);
   const [hasCheckedUpdate, setHasCheckedUpdate] = useState(false);
 
+  // State Visual Keymapping
+  const [keymapLayouts, setKeymapLayouts] = useState<GameLayout[]>(() =>
+    createDefaultLayouts()
+  );
+  const [activeKeymapLayoutId, setActiveKeymapLayoutId] = useState<string>("layout_1");
+  const [isEditingKeymap, setIsEditingKeymap] = useState<boolean>(false);
+  const [showKeymapPanel, setShowKeymapPanel] = useState<boolean>(true);
+  const [deviceResolution, setDeviceResolution] = useState<{
+    width: number;
+    height: number;
+  }>({
+    width: 1920,
+    height: 1080,
+  });
+
+  const activeKeymapLayout =
+    keymapLayouts.find((l) => l.id === activeKeymapLayoutId) ?? keymapLayouts[0];
+
+  const handleUpdateKeymapLayout = (updated: GameLayout) => {
+    setKeymapLayouts((prev) =>
+      prev.map((l) => (l.id === updated.id ? updated : l))
+    );
+  };
+
+  const handleImportKeymapLayout = (imported: GameLayout) => {
+    setKeymapLayouts((prev) => [...prev, imported]);
+    setActiveKeymapLayoutId(imported.id);
+  };
+
+  const handleDispatchTouch = async (payload: TouchDispatchPayload) => {
+    try {
+      await invoke("inject_android_touch", {
+        serial: activeDevice ?? null,
+        customPath: config.scrcpyPath ?? null,
+        action: payload.action,
+        x: payload.x,
+        y: payload.y,
+        toX: payload.toX ?? null,
+        toY: payload.toY ?? null,
+        durationMs: payload.durationMs ?? null,
+      });
+    } catch (e) {
+      console.error("Failed to inject touch:", e);
+    }
+  };
+
   const showAlert = (
     title: string,
     message: string,
-    kind: 'warning' | 'error' | 'info' | 'success' = 'info',
-    actionLabel = 'OK',
+    kind: "warning" | "error" | "info" | "success" = "info",
+    actionLabel = "OK",
     onAction?: () => void,
     showCancel = false,
-    cancelLabel = 'Cancel',
+    cancelLabel = "Cancel",
     onCancel?: () => void
   ) => {
     setAlertState({
@@ -100,19 +153,17 @@ function App() {
       onAction,
       showCancel,
       cancelLabel,
-      onCancel
+      onCancel,
     });
   };
 
   useEffect(() => {
-    // Initial setup: fetch version and close splashscreen
     const initApp = async () => {
       try {
         const v = await getVersion();
         setAppVersion(v);
 
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('close_splashscreen');
+        await invoke("close_splashscreen");
       } catch (e) {
         console.error("Initialization failed:", e);
       }
@@ -123,40 +174,41 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Initial check (once on mount) - Silent to avoid log clatter. adb's own
-    // reconnect of an already-paired device can lag a beat behind the app
-    // opening, so keep checking briefly instead of a single refresh that
-    // might land before adb has caught up.
     checkScrcpy(config.scrcpyPath);
     refreshDevicesUntilSettled(config.scrcpyPath);
   }, []);
 
   useEffect(() => {
-    if (scrcpyStatus.found && (!hasCheckedUpdate || config.scrcpyPath !== lastCheckedPath) && !isDownloading) {
+    if (
+      scrcpyStatus.found &&
+      (!hasCheckedUpdate || config.scrcpyPath !== lastCheckedPath) &&
+      !isDownloading
+    ) {
       setHasCheckedUpdate(true);
       setLastCheckedPath(config.scrcpyPath);
-      
+
       const runCheck = async () => {
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const updateRes: any = await invoke('check_scrcpy_update', { customPath: config.scrcpyPath });
+          const updateRes: any = await invoke("check_scrcpy_update", {
+            customPath: config.scrcpyPath,
+          });
           if (updateRes && updateRes.update_available) {
             showAlert(
-              t('alerts.updateAvailableTitle'),
-              t('alerts.updateAvailableMessage', {
-                local: updateRes.local_version || 'unknown',
-                latest: updateRes.latest_version || 'unknown'
+              t("alerts.updateAvailableTitle"),
+              t("alerts.updateAvailableMessage", {
+                local: updateRes.local_version || "unknown",
+                latest: updateRes.latest_version || "unknown",
               }),
-              'info',
-              t('alerts.updateBtn'),
+              "info",
+              t("alerts.updateBtn"),
               async () => {
                 if (config.scrcpyPath) {
-                  setConfig(prev => ({ ...prev, scrcpyPath: undefined }));
+                  setConfig((prev) => ({ ...prev, scrcpyPath: undefined }));
                 }
                 await downloadScrcpy();
               },
               true,
-              t('alerts.cancelBtn')
+              t("alerts.cancelBtn")
             );
           }
         } catch (e) {
@@ -167,48 +219,60 @@ function App() {
     } else if (!scrcpyStatus.found) {
       setHasCheckedUpdate(false);
     }
-  }, [scrcpyStatus.found, config.scrcpyPath, isDownloading, hasCheckedUpdate, lastCheckedPath, t]);
+  }, [
+    scrcpyStatus.found,
+    config.scrcpyPath,
+    isDownloading,
+    hasCheckedUpdate,
+    lastCheckedPath,
+    t,
+  ]);
 
   useEffect(() => {
-    // Global Drag and Drop Listener (re-bind only if activeDevice changes)
-    const unlisten = getCurrentWindow().listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
-      if (!activeDevice) {
-        setLogs(prev => [...prev.slice(-100), t('logs.noDeviceForDragDrop')]);
-        return;
-      }
+    const unlisten = getCurrentWindow().listen<{ paths: string[] }>(
+      "tauri://drag-drop",
+      (event) => {
+        if (!activeDevice) {
+          setLogs((prev) => [
+            ...prev.slice(-100),
+            t("logs.noDeviceForDragDrop"),
+          ]);
+          return;
+        }
 
-      const paths = event.payload.paths;
-      if (paths && paths.length > 0) {
-        paths.forEach(path => handleFileOperation(path));
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          paths.forEach((path) => handleFileOperation(path));
+        }
       }
-    });
+    );
 
     return () => {
-      unlisten.then(f => f());
+      unlisten.then((f) => f());
     };
   }, [activeDevice]);
 
   useEffect(() => {
-    // Keep the Rust side's notion of "the selected device" in sync, so the
-    // Ctrl+Alt+Shift+C global shortcut (a real OS-level hotkey registered in
-    // shortcuts.rs, not a webview keydown listener) knows which mirror window
-    // to recentre even when no app window has keyboard focus.
-    const device = activeDevice && runningDevices.includes(activeDevice) ? activeDevice : null;
+    const device =
+      activeDevice && runningDevices.includes(activeDevice) ? activeDevice : null;
     (async () => {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('set_active_device', { device });
+      await invoke("set_active_device", { device });
     })();
   }, [activeDevice, runningDevices]);
 
   useEffect(() => {
     if (activeDevice) {
-      setConfig(prev => ({ ...prev, device: activeDevice }));
+      setConfig((prev) => ({ ...prev, device: activeDevice }));
     }
   }, [activeDevice]);
 
   const handleStart = async () => {
     if (!activeDevice) {
-      showAlert(t('alerts.noDeviceSelectedTitle'), t('alerts.noDeviceSelectedMessage'), "warning");
+      showAlert(
+        t("alerts.noDeviceSelectedTitle"),
+        t("alerts.noDeviceSelectedMessage"),
+        "warning"
+      );
       return;
     }
     await runScrcpy(config);
@@ -225,8 +289,7 @@ function App() {
 
   const handleKillAdb = async () => {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('kill_adb', { customPath: config.scrcpyPath });
+      await invoke("kill_adb", { customPath: config.scrcpyPath });
       refreshDevices(config.scrcpyPath);
     } catch (e) {
       console.error(e);
@@ -236,7 +299,7 @@ function App() {
   const handleFileOperation = async (path: string) => {
     if (!activeDevice) return;
 
-    const isApk = path.toLowerCase().endsWith('.apk');
+    const isApk = path.toLowerCase().endsWith(".apk");
     if (isApk) {
       await installApk(activeDevice, path);
     } else {
@@ -251,19 +314,19 @@ function App() {
         multiple: true,
         filters: [
           {
-            name: 'All Files',
-            extensions: ['*']
+            name: "All Files",
+            extensions: ["*"],
           },
           {
-            name: 'Android App (APK)',
-            extensions: ['apk']
-          }
-        ]
+            name: "Android App (APK)",
+            extensions: ["apk"],
+          },
+        ],
       });
 
       if (selected) {
         if (Array.isArray(selected)) {
-          selected.forEach(path => handleFileOperation(path));
+          selected.forEach((path) => handleFileOperation(path));
         } else {
           handleFileOperation(selected);
         }
@@ -277,18 +340,19 @@ function App() {
     try {
       let startPath = config.scrcpyPath;
       if (!startPath) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        startPath = await invoke<string>('get_scrcpy_bin_dir').catch(() => '');
+        startPath = await invoke<string>("get_scrcpy_bin_dir").catch(() => "");
       }
       const selected = await open({
         directory: true,
         multiple: false,
-        defaultPath: startPath || undefined
+        defaultPath: startPath || undefined,
       });
-      if (selected && typeof selected === 'string') {
-        setConfig(prev => ({ ...prev, scrcpyPath: selected }));
-        setLogs(prev => [...prev.slice(-100), t('logs.customScrcpyPathSet', { path: selected })]);
-        // Trigger a check with the new path
+      if (selected && typeof selected === "string") {
+        setConfig((prev) => ({ ...prev, scrcpyPath: selected }));
+        setLogs((prev) => [
+          ...prev.slice(-100),
+          t("logs.customScrcpyPathSet", { path: selected }),
+        ]);
         setTimeout(() => checkScrcpy(selected), 100);
       }
     } catch (e) {
@@ -297,15 +361,25 @@ function App() {
   };
 
   const handleResetPath = async () => {
-    setConfig(prev => ({ ...prev, scrcpyPath: undefined }));
-    setLogs(prev => [...prev.slice(-100), t('logs.customScrcpyPathCleared')]);
-    // Trigger a check with no custom path
+    setConfig((prev) => ({ ...prev, scrcpyPath: undefined }));
+    setLogs((prev) => [
+      ...prev.slice(-100),
+      t("logs.customScrcpyPathCleared"),
+    ]);
     setTimeout(() => checkScrcpy(undefined), 100);
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen font-sans selection:bg-primary selection:text-on-primary overflow-hidden flex flex-col transition-opacity duration-1000 ease-in-out" style={{ backgroundColor: 'var(--bg-base)', color: 'var(--text-base)', opacity: 0, animation: 'fadeIn 0.8s ease-out forwards' }}>
+      <div
+        className="min-h-screen font-sans selection:bg-primary selection:text-on-primary overflow-hidden flex flex-col transition-opacity duration-1000 ease-in-out"
+        style={{
+          backgroundColor: "var(--bg-base)",
+          color: "var(--text-base)",
+          opacity: 0,
+          animation: "fadeIn 0.8s ease-out forwards",
+        }}
+      >
         <style>{`
           @keyframes fadeIn {
             from { opacity: 0; transform: translateY(5px); }
@@ -371,11 +445,80 @@ function App() {
                     }}
                   />
                 </div>
+
+                <div className="relative z-20 rounded-xl border border-white/10 bg-black/30 backdrop-blur-md overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-white/10 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold tracking-wide uppercase">
+                        Visual Keymap
+                      </span>
+                      <span className="opacity-70">
+                        ({activeDevice || "No device selected"})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 opacity-80">
+                        <span>W:</span>
+                        <input
+                          type="number"
+                          value={deviceResolution.width}
+                          onChange={(e) =>
+                            setDeviceResolution((prev) => ({
+                              ...prev,
+                              width: Math.max(240, Number(e.target.value) || 1920),
+                            }))
+                          }
+                          className="w-16 px-1.5 py-0.5 rounded bg-black/40 border border-white/15"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 opacity-80">
+                        <span>H:</span>
+                        <input
+                          type="number"
+                          value={deviceResolution.height}
+                          onChange={(e) =>
+                            setDeviceResolution((prev) => ({
+                              ...prev,
+                              height: Math.max(240, Number(e.target.value) || 1080),
+                            }))
+                          }
+                          className="w-16 px-1.5 py-0.5 rounded bg-black/40 border border-white/15"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowKeymapPanel((v) => !v)}
+                        className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 font-medium"
+                      >
+                        {showKeymapPanel ? "Sembunyikan" : "Tampilkan"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showKeymapPanel && (
+                    <VisualKeymapOverlay
+                      layout={activeKeymapLayout}
+                      allLayouts={keymapLayouts}
+                      deviceWidth={deviceResolution.width}
+                      deviceHeight={deviceResolution.height}
+                      isEditing={isEditingKeymap}
+                      onToggleEdit={() => setIsEditingKeymap((v) => !v)}
+                      onSelectLayout={setActiveKeymapLayoutId}
+                      onUpdateLayout={handleUpdateKeymapLayout}
+                      onImportLayout={handleImportKeymapLayout}
+                      onDispatchTouch={handleDispatchTouch}
+                    />
+                  )}
+                </div>
+
                 <div className="relative z-10">
                   <LogPanel
                     logs={logs}
                     onClear={clearLogs}
-                    onAddLog={(msg) => setLogs((prev: string[]) => [...prev.slice(-100), msg])}
+                    onAddLog={(msg) =>
+                      setLogs((prev: string[]) => [...prev.slice(-100), msg])
+                    }
                     onRunCommand={runTerminalCommand}
                   />
                 </div>
@@ -403,7 +546,7 @@ function App() {
 
         <ThemedModal
           isOpen={alertState.isOpen}
-          onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+          onClose={() => setAlertState((prev) => ({ ...prev, isOpen: false }))}
           title={alertState.title}
           message={alertState.message}
           kind={alertState.kind}
