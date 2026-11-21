@@ -12,7 +12,7 @@ import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OnboardingModal from "./components/OnboardingModal";
 import ThemedModal from "./components/ThemedModal";
-import { VisualKeymapOverlay } from "./components/VisualKeymapOverlay";
+import { ScreenOverlayKeymapper } from "./components/ScreenOverlayKeymapper";
 import {
   DeviceResolution,
   GameLayout,
@@ -89,30 +89,24 @@ function App() {
   const [lastCheckedPath, setLastCheckedPath] = useState<string | undefined>(undefined);
   const [hasCheckedUpdate, setHasCheckedUpdate] = useState(false);
 
-  const [keymapLayouts, setKeymapLayouts] = useState<GameLayout[]>(() =>
-    createDefaultLayouts()
-  );
+  const [keymapLayouts, setKeymapLayouts] = useState<GameLayout[]>(() => {
+    try {
+      const saved = localStorage.getItem("scrcpy_gui_visual_layouts_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved) as GameLayout[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // fallback to default
+    }
+    return createDefaultLayouts();
+  });
   const [activeKeymapLayoutId, setActiveKeymapLayoutId] = useState<string>("layout_1");
-  const [isEditingKeymap, setIsEditingKeymap] = useState<boolean>(false);
-  const [showKeymapPanel, setShowKeymapPanel] = useState<boolean>(true);
+  const [isScreenOverlayOpen, setIsScreenOverlayOpen] = useState<boolean>(false);
   const [deviceResolution, setDeviceResolution] = useState<DeviceResolution>({
     width: 1920,
     height: 1080,
   });
-
-  const activeKeymapLayout =
-    keymapLayouts.find((l) => l.id === activeKeymapLayoutId) ?? keymapLayouts[0];
-
-  const handleUpdateKeymapLayout = (updated: GameLayout) => {
-    setKeymapLayouts((prev) =>
-      prev.map((l) => (l.id === updated.id ? updated : l))
-    );
-  };
-
-  const handleImportKeymapLayout = (imported: GameLayout) => {
-    setKeymapLayouts((prev) => [...prev, imported]);
-    setActiveKeymapLayoutId(imported.id);
-  };
 
   const handleDetectResolution = async (serial: string | null) => {
     if (!serial) return;
@@ -442,7 +436,7 @@ function App() {
               </div>
 
               <div className="lg:col-span-6 flex flex-col gap-6 relative z-20">
-                <div className="relative z-30">
+                <div className="relative z-30 space-y-2">
                   <ControlPanel
                     config={config}
                     setConfig={setConfig}
@@ -457,82 +451,16 @@ function App() {
                       }
                     }}
                   />
-                </div>
-
-                <div className="relative z-20 rounded-xl border border-white/10 bg-black/30 backdrop-blur-md overflow-hidden">
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-white/10 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold tracking-wide uppercase">
-                        Visual Keymap
-                      </span>
-                      <span className="opacity-70">
-                        ({activeDevice || "No device selected"})
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="flex items-center gap-1 opacity-80">
-                        <span>W:</span>
-                        <input
-                          type="number"
-                          value={deviceResolution.width}
-                          onChange={(e) =>
-                            setDeviceResolution((prev) => ({
-                              ...prev,
-                              width: Math.max(240, Number(e.target.value) || 1920),
-                            }))
-                          }
-                          className="w-16 px-1.5 py-0.5 rounded bg-black/40 border border-white/15"
-                        />
-                      </label>
-                      <label className="flex items-center gap-1 opacity-80">
-                        <span>H:</span>
-                        <input
-                          type="number"
-                          value={deviceResolution.height}
-                          onChange={(e) =>
-                            setDeviceResolution((prev) => ({
-                              ...prev,
-                              height: Math.max(240, Number(e.target.value) || 1080),
-                            }))
-                          }
-                          className="w-16 px-1.5 py-0.5 rounded bg-black/40 border border-white/15"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => void handleDetectResolution(activeDevice)}
-                        disabled={!activeDevice}
-                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 font-medium"
-                      >
-                        Auto Res
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowKeymapPanel((v) => !v)}
-                        className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 font-medium"
-                      >
-                        {showKeymapPanel ? "Sembunyikan" : "Tampilkan"}
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsScreenOverlayOpen(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold shadow hover:opacity-90 transition"
+                    >
+                      Screen Keymap Overlay ({deviceResolution.width}x{deviceResolution.height})
+                    </button>
                   </div>
-
-                  {showKeymapPanel && (
-                    <VisualKeymapOverlay
-                      layout={activeKeymapLayout}
-                      allLayouts={keymapLayouts}
-                      deviceWidth={deviceResolution.width}
-                      deviceHeight={deviceResolution.height}
-                      isEditing={isEditingKeymap}
-                      onToggleEdit={() => setIsEditingKeymap((v) => !v)}
-                      onSelectLayout={setActiveKeymapLayoutId}
-                      onUpdateLayout={handleUpdateKeymapLayout}
-                      onImportLayout={handleImportKeymapLayout}
-                      onDispatchTouch={handleDispatchTouch}
-                    />
-                  )}
                 </div>
-
                 <div className="relative z-10">
                   <LogPanel
                     logs={logs}
@@ -554,6 +482,20 @@ function App() {
             <Footer version={appVersion} />
           </div>
         </div>
+
+        {isScreenOverlayOpen && (
+          <ScreenOverlayKeymapper
+            activeDevice={activeDevice}
+            layouts={keymapLayouts}
+            activeLayoutId={activeKeymapLayoutId}
+            deviceWidth={deviceResolution.width}
+            deviceHeight={deviceResolution.height}
+            onSelectLayout={setActiveKeymapLayoutId}
+            onChangeLayouts={setKeymapLayouts}
+            onDispatchTouch={handleDispatchTouch}
+            onCloseOverlay={() => setIsScreenOverlayOpen(false)}
+          />
+        )}
 
         <OnboardingModal
           isOpen={isOnboardingOpen}
