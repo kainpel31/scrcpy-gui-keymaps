@@ -23,6 +23,14 @@ import { useScrcpy } from "./hooks/useScrcpy";
 import { getVersion } from "@tauri-apps/api/app";
 import { useI18n } from "./i18n";
 
+interface ScrcpyWindowRect {
+  found: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 function App() {
   const { t } = useI18n();
   const {
@@ -139,6 +147,39 @@ function App() {
       console.error("Failed to inject touch:", e);
     }
   };
+
+  useEffect(() => {
+    if (!isScreenOverlayOpen) return;
+
+    let cancelled = false;
+    const syncToScrcpyWindow = async () => {
+      if (cancelled) return;
+      try {
+        const rect = await invoke<ScrcpyWindowRect>("sync_overlay_to_scrcpy", {
+          serial: activeDevice ?? null,
+        });
+        if (!cancelled && rect.found && rect.width > 0 && rect.height > 0) {
+          setDeviceResolution((prev) =>
+            prev.width === rect.width && prev.height === rect.height
+              ? prev
+              : { width: rect.width, height: rect.height }
+          );
+        }
+      } catch (e) {
+        console.error("Failed to sync overlay to scrcpy window:", e);
+      }
+    };
+
+    void syncToScrcpyWindow();
+    const intervalId = setInterval(() => {
+      void syncToScrcpyWindow();
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [isScreenOverlayOpen, activeDevice]);
 
   const showAlert = (
     title: string,
@@ -457,7 +498,7 @@ function App() {
                       onClick={() => setIsScreenOverlayOpen(true)}
                       className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold shadow hover:opacity-90 transition"
                     >
-                      Screen Keymap Overlay ({deviceResolution.width}x{deviceResolution.height})
+                      Attach Overlay to scrcpy ({deviceResolution.width}x{deviceResolution.height})
                     </button>
                   </div>
                 </div>
