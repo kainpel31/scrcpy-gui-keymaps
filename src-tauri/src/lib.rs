@@ -128,6 +128,7 @@ pub fn run() {
             commands::get_scrcpy_bin_dir,
             commands::run_terminal_command,
             commands::check_scrcpy_update,
+            keymap_injector::get_device_resolution,
             keymap_injector::inject_android_touch,
             close_splashscreen,
             get_app_version
