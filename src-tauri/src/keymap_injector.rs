@@ -1,5 +1,12 @@
+use serde::Serialize;
 use std::path::PathBuf;
 use std::process::Command;
+
+#[derive(Serialize)]
+pub struct DeviceResolution {
+    pub width: u32,
+    pub height: u32,
+}
 
 fn resolve_adb_binary(custom_path: Option<String>) -> PathBuf {
     if let Some(dir) = custom_path {
@@ -21,6 +28,61 @@ fn resolve_adb_binary(custom_path: Option<String>) -> PathBuf {
     return PathBuf::from("adb.exe");
     #[cfg(not(target_os = "windows"))]
     return PathBuf::from("adb");
+}
+
+#[tauri::command]
+pub fn get_device_resolution(
+    serial: Option<String>,
+    custom_path: Option<String>,
+) -> Result<DeviceResolution, String> {
+    let adb_bin = resolve_adb_binary(custom_path);
+    let mut args: Vec<String> = Vec::new();
+
+    if let Some(dev) = serial {
+        if !dev.trim().is_empty() {
+            args.push("-s".to_string());
+            args.push(dev);
+        }
+    }
+
+    args.push("shell".to_string());
+    args.push("wm".to_string());
+    args.push("size".to_string());
+
+    let output = Command::new(&adb_bin)
+        .args(&args)
+        .output()
+        .map_err(|e| format!("Failed to run {}: {}", adb_bin.display(), e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("adb wm size error: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let chosen_line = stdout
+        .lines()
+        .rev()
+        .find(|line| line.contains('x'))
+        .ok_or_else(|| format!("Unexpected wm size output: {}", stdout))?;
+
+    let dims_part = chosen_line
+        .split(':')
+        .next_back()
+        .unwrap_or(chosen_line)
+        .trim();
+
+    let mut parts = dims_part.split('x');
+    let width: u32 = parts
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .ok_or_else(|| format!("Invalid width in wm size: {}", dims_part))?;
+    let height: u32 = parts
+        .next()
+        .and_then(|s| s.trim().parse().ok())
+        .ok_or_else(|| format!("Invalid height in wm size: {}", dims_part))?;
+
+    Ok(DeviceResolution { width, height })
 }
 
 #[tauri::command]
