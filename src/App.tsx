@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import Sidebar from "./components/Sidebar";
@@ -12,13 +13,6 @@ import Footer from "./components/Footer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OnboardingModal from "./components/OnboardingModal";
 import ThemedModal from "./components/ThemedModal";
-import { ScreenOverlayKeymapper } from "./components/ScreenOverlayKeymapper";
-import {
-  DeviceResolution,
-  GameLayout,
-  TouchDispatchPayload,
-  createDefaultLayouts,
-} from "./types/keymap";
 import { useScrcpy } from "./hooks/useScrcpy";
 import { getVersion } from "@tauri-apps/api/app";
 import { useI18n } from "./i18n";
@@ -97,89 +91,40 @@ function App() {
   const [lastCheckedPath, setLastCheckedPath] = useState<string | undefined>(undefined);
   const [hasCheckedUpdate, setHasCheckedUpdate] = useState(false);
 
-  const [keymapLayouts, setKeymapLayouts] = useState<GameLayout[]>(() => {
+  const handleOpenScrcpyOverlay = async () => {
     try {
-      const saved = localStorage.getItem("scrcpy_gui_visual_layouts_v1");
-      if (saved) {
-        const parsed = JSON.parse(saved) as GameLayout[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // fallback to default
-    }
-    return createDefaultLayouts();
-  });
-  const [activeKeymapLayoutId, setActiveKeymapLayoutId] = useState<string>("layout_1");
-  const [isScreenOverlayOpen, setIsScreenOverlayOpen] = useState<boolean>(false);
-  const [deviceResolution, setDeviceResolution] = useState<DeviceResolution>({
-    width: 1920,
-    height: 1080,
-  });
-
-  const handleDetectResolution = async (serial: string | null) => {
-    if (!serial) return;
-    try {
-      const res = await invoke<DeviceResolution>("get_device_resolution", {
-        serial,
-        customPath: config.scrcpyPath ?? null,
-      });
-      if (res && res.width > 0 && res.height > 0) {
-        setDeviceResolution({ width: res.width, height: res.height });
-      }
-    } catch (e) {
-      console.error("Failed to detect device resolution:", e);
-    }
-  };
-
-  const handleDispatchTouch = async (payload: TouchDispatchPayload) => {
-    try {
-      await invoke("inject_android_touch", {
+      const rect = await invoke<ScrcpyWindowRect>("get_scrcpy_window_rect", {
         serial: activeDevice ?? null,
-        customPath: config.scrcpyPath ?? null,
-        action: payload.action,
-        x: payload.x,
-        y: payload.y,
-        toX: payload.toX ?? null,
-        toY: payload.toY ?? null,
-        durationMs: payload.durationMs ?? null,
+      });
+
+      const label = "scrcpy-keymap-overlay";
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        await existing.close();
+      }
+
+      const querySerial = activeDevice ? `&serial=${encodeURIComponent(activeDevice)}` : "";
+      const overlayWin = new WebviewWindow(label, {
+        url: `index.html?overlay=1${querySerial}`,
+        title: "scrcpy Keymap Overlay",
+        x: rect.found ? rect.x : 120,
+        y: rect.found ? rect.y : 120,
+        width: rect.found ? rect.width : 1100,
+        height: rect.found ? rect.height : 650,
+        decorations: false,
+        alwaysOnTop: true,
+        transparent: true,
+        skipTaskbar: true,
+        resizable: true,
+      });
+
+      overlayWin.once("tauri://error", (err) => {
+        console.error("Failed to create overlay window:", err);
       });
     } catch (e) {
-      console.error("Failed to inject touch:", e);
+      console.error("Failed to open scrcpy overlay:", e);
     }
   };
-
-  useEffect(() => {
-    if (!isScreenOverlayOpen) return;
-
-    let cancelled = false;
-    const syncToScrcpyWindow = async () => {
-      if (cancelled) return;
-      try {
-        const rect = await invoke<ScrcpyWindowRect>("sync_overlay_to_scrcpy", {
-          serial: activeDevice ?? null,
-        });
-        if (!cancelled && rect.found && rect.width > 0 && rect.height > 0) {
-          setDeviceResolution((prev) =>
-            prev.width === rect.width && prev.height === rect.height
-              ? prev
-              : { width: rect.width, height: rect.height }
-          );
-        }
-      } catch (e) {
-        console.error("Failed to sync overlay to scrcpy window:", e);
-      }
-    };
-
-    void syncToScrcpyWindow();
-    const intervalId = setInterval(() => {
-      void syncToScrcpyWindow();
-    }, 150);
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  }, [isScreenOverlayOpen, activeDevice]);
 
   const showAlert = (
     title: string,
@@ -310,7 +255,6 @@ function App() {
   useEffect(() => {
     if (activeDevice) {
       setConfig((prev) => ({ ...prev, device: activeDevice }));
-      void handleDetectResolution(activeDevice);
     }
   }, [activeDevice]);
 
@@ -495,10 +439,10 @@ function App() {
                   <div className="flex items-center justify-end">
                     <button
                       type="button"
-                      onClick={() => setIsScreenOverlayOpen(true)}
+                      onClick={() => void handleOpenScrcpyOverlay()}
                       className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold shadow hover:opacity-90 transition"
                     >
-                      Attach Overlay to scrcpy ({deviceResolution.width}x{deviceResolution.height})
+                      Launch Overlay on scrcpy Window
                     </button>
                   </div>
                 </div>
@@ -523,20 +467,6 @@ function App() {
             <Footer version={appVersion} />
           </div>
         </div>
-
-        {isScreenOverlayOpen && (
-          <ScreenOverlayKeymapper
-            activeDevice={activeDevice}
-            layouts={keymapLayouts}
-            activeLayoutId={activeKeymapLayoutId}
-            deviceWidth={deviceResolution.width}
-            deviceHeight={deviceResolution.height}
-            onSelectLayout={setActiveKeymapLayoutId}
-            onChangeLayouts={setKeymapLayouts}
-            onDispatchTouch={handleDispatchTouch}
-            onCloseOverlay={() => setIsScreenOverlayOpen(false)}
-          />
-        )}
 
         <OnboardingModal
           isOpen={isOnboardingOpen}
