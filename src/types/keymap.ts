@@ -42,7 +42,7 @@ export interface MappedControl {
   runReachNorm?: number;
   runKey?: string;
   scale?: number;
-  fade?: number; // 0.1 - 1.0 (di UI tampil sebagai 10% - 100%)
+  fade?: number;
   sensitivity?: number;
   behavior?: TriggerBehavior;
   opensMenu?: boolean;
